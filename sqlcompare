@@ -31,7 +31,7 @@ while getopts :i:c:wh FLAG; do
 echo "$FLAG: $OPTARG";
   case $FLAG in
     i)
-      IGNORE_TABLES="$IGNORE_TABLES $OPTARG";
+      ADDL_IGNORE_TABLES="$OPTARG";
       SHIFTCOUNT=$(expr $SHIFTCOUNT + 2);
       ;;
     c)
@@ -51,6 +51,13 @@ echo "$FLAG: $OPTARG";
       ;;
   esac
 done;
+
+# Detect options after arguments, in which case abort.
+shift $SHIFTCOUNT;
+if [[ "$#" > "1" ]]; then
+  echo "ERROR: It looks like you've specified options after arguments. Options must be given BEFORE arguments.";
+  exit 1;
+fi
 
 # Source config file or exit.
 if [[ -e "${MYDIR}/config.sh" ]]; then
@@ -72,13 +79,7 @@ if [[ -n "$ADDL_CONFIG" ]]; then
   fi
 fi
 
-# Detect options after arguments, in which case abort.
-shift $SHIFTCOUNT;
-if [[ "$#" > "1" ]]; then
-  echo "ERROR: It looks like you've specified options after arguments. Options must be given BEFORE arguments.";
-  exit 1;
-fi
-
+# Define db name.
 if [[ -n $1 ]]; then
   db=$1;
 else 
@@ -89,6 +90,10 @@ if [[ -z $DB_PASS ]]; then
   echo "MySQL root password should be set in ${MYDIR}/config.sh, but it's not found."
   read -p "Please enter MySQL root password..." -s DB_PASS
 fi
+
+# Accommodate additional ignore tables from command-line.
+IGNORE_TABLES="$IGNORE_TABLES $ADDL_IGNORE_TABLES"
+
 
 DUMPOPTIONS="--complete-insert --no-create-info --skip-extended-insert --skip-lock-tables --skip-dump-date";
 for IGNORE_TABLE in $IGNORE_TABLES; do
@@ -105,19 +110,20 @@ read -p "Make your DB changes in the browser or elsewhere, then strike Enter her
 mysqldump -u root -p$DB_PASS $DUMPOPTIONS $db > /tmp/after.sql
 
 if [[ "$USE_WORD_BASED_DIFF" == "1" ]]; then
-  mkdir /tmp/sqlcompare-git
   rm -rf /tmp/sqlcompare-git;
+  mkdir /tmp/sqlcompare-git
+ls -la /tmp/sqlcompare-git;
   cd /tmp/sqlcompare-git;
   git init;
   mv /tmp/before.sql ./export.sql
   git add export.sql
   git commit -a -m "initial commit";
   mv /tmp/after.sql ./export.sql
-  git diff --word-diff=plain --word-diff-regex=. > /tmp/sqlcompare-diff.txt
+  git diff --word-diff=plain --word-diff-regex=. --color > /tmp/sqlcompare-diff.txt
 else 
   diff /tmp/{before,after}.sql > /tmp/sqlcompare-diff.txt
 fi;
 
-less /tmp/sqlcompare-diff.txt
+less -r /tmp/sqlcompare-diff.txt
 
-echo diff stored in /tmp/sqlcompare-diff.txt
+echo 'diff stored in /tmp/sqlcompare-diff.txt (use `less -r` in case it contains colors)'

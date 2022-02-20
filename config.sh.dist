@@ -1,0 +1,5 @@
+# mysql root password (sqlcompare will prompt if this is empty):
+DB_PASS="";
+
+# Space-delimited list of table names to ignore
+IGNORE_TABLES="";
