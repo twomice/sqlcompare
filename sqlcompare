@@ -1,0 +1,40 @@
+#!/bin/bash
+
+DB_PASS_FILE=/tmp/zz.txt
+
+if [ ! -e $DB_PASS_FILE ]
+then
+  echo MySQL password for user 'root@localhost' should be in $DB_PASS_FILE, but that file doesn\'t exist. Quitting,
+  echo "MySQL root password file $DB_PASS_FILE not found." 
+  read -p "Please enter MySQL root password..." -s DB_PASS
+else
+  echo "Using mysql root password from $DB_PASS_FILE"
+  DB_PASS=$(cat $DB_PASS_FILE)
+fi
+
+db=drupal6_civi
+if [ ! -z $1 ]
+then
+  db=$1
+else 
+  echo "Usage: sqlcompare DB"
+  echo "  DB: name of the database that will be changed and compared"
+  exit
+fi
+
+DUMPOPTIONS="--ignore-table=${db}.sessions --ignore-table=${db}.search_index --ignore-table=${db}.search_dataset --ignore-table=${db}.cache_menu --skip-lock-tables"
+
+mysqldump -u root -p$DB_PASS --complete-insert --no-create-info --skip-extended-insert $DUMPOPTIONS $db > /tmp/before.sql
+
+echo "'Before' snapshot has been taken."
+echo Make your DB changes in the browser or elsewhere, then strike Enter here to continue with the 'after' snapshot.
+
+read continue
+
+mysqldump -u root -p$DB_PASS --complete-insert --no-create-info --skip-extended-insert $DUMPOPTIONS $db > /tmp/after.sql
+
+diff /tmp/{before,after}.sql | grep -vP "(civicrm_cache|civicrm_log|civicrm_prevnext_cache|^[<>] -- Dump completed on |^[^<>])" > /tmp/sqlcompare-diff.txt
+
+less /tmp/sqlcompare-diff.txt
+
+echo diff stored in /tmp/sqlcompare-diff.txt
