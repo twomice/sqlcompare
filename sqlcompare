@@ -113,7 +113,7 @@ if [[ "$USE_WORD_BASED_DIFF" == "1" ]]; then
   git add export.sql
   git commit -a -m "initial commit";
   mv /tmp/after.sql ./export.sql
-  git diff --word-diff=plain --word-diff-regex=. -x "diff --color=always" > /tmp/sqlcompare-diff.txt
+  git diff --word-diff=plain --word-diff-regex=. > /tmp/sqlcompare-diff.txt
 else 
   diff /tmp/{before,after}.sql > /tmp/sqlcompare-diff.txt
 fi;
