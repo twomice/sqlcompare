@@ -1,39 +1,122 @@
 #!/bin/bash
 
-DB_PASS_FILE=/tmp/zz.txt
+# This script aims to adhere to the Google Shell Style Guide: https://google.github.io/styleguide/shellguide.html
 
-if [ ! -e $DB_PASS_FILE ]
-then
-  echo MySQL password for user 'root@localhost' should be in $DB_PASS_FILE, but that file doesn\'t exist. Quitting,
-  echo "MySQL root password file $DB_PASS_FILE not found." 
-  read -p "Please enter MySQL root password..." -s DB_PASS
+# Full system path to the directory containing this file, with trailing slash.
+# This line determines the location of the script even when called from a bash
+# prompt in another directory (in which case `pwd` will point to that directory
+# instead of the one containing this script).  See http://stackoverflow.com/a/246128
+MYDIR="$( cd -P "$( dirname "$(readlink -f "${BASH_SOURCE[0]}")" )" && pwd )/"
+
+# Print usage.
+function usage {
+  echo "Usage: $0 [options] DATABASE_NAME"
+  echo "  Compare mysql database contents before and after changes."
+  echo "  Will prompt for required config if not provided."
+  echo "  DATABASE_NAME: name of mysql database to examine"
+  echo "  Options:"
+  echo "    -i: (string) Space-delimited list of table names to ignore."
+  echo "    -c: (string) Full system path to additional config file; loaded after"
+  echo "        config.sh, it can override those configs."
+  echo "    -w: (null) Print word-based diff (instead of default line-based)"
+  echo "    -h: (null) Display this help message."
+  echo
+  echo "See also: config.sh in $MYDIR.";
+  exit 1;
+}
+
+# Process user-provided options.
+SHIFTCOUNT=0;
+while getopts :i:c:wh FLAG; do
+echo "$FLAG: $OPTARG";
+  case $FLAG in
+    i)
+      IGNORE_TABLES="$IGNORE_TABLES $OPTARG";
+      SHIFTCOUNT=$(expr $SHIFTCOUNT + 2);
+      ;;
+    c)
+      ADDL_CONFIG="$OPTARG";
+      SHIFTCOUNT=$(expr $SHIFTCOUNT + 2);
+      ;;
+    w)
+      USE_WORD_BASED_DIFF=1;
+      SHIFTCOUNT=$(expr $SHIFTCOUNT + 1);
+      ;;
+    h)
+      usage;
+      ;;
+    \?) #unrecognized option - show help
+      echo "ERROR: Option -$OPTARG not allowed."
+      usage;
+      ;;
+  esac
+done;
+
+# Source config file or exit.
+if [[ -e "${MYDIR}/config.sh" ]]; then
+  echo "Using primary config file at ${MYDIR}/config.sh."
+  source "${MYDIR}/config.sh"
 else
-  echo "Using mysql root password from $DB_PASS_FILE"
-  DB_PASS=$(cat $DB_PASS_FILE)
+  echo "Could not find required config file at ${MYDIR}/config.sh. Exiting."
+  exit 1
 fi
 
-db=drupal6_civi
-if [ ! -z $1 ]
-then
-  db=$1
+# Use additional config file if specified, or exit.
+if [[ -n "$ADDL_CONFIG" ]]; then
+  if [[ -e "$ADDL_CONFIG" ]]; then
+    echo "Using additional config file at $ADDL_CONFIG."
+    source "$ADDL_CONFIG"
+  else
+    echo "Could not find specified config file at $ADDL_CONFIG. Exiting."
+    exit 1
+  fi
+fi
+
+# Detect options after arguments, in which case abort.
+shift $SHIFTCOUNT;
+if [[ "$#" > "1" ]]; then
+  echo "ERROR: It looks like you've specified options after arguments. Options must be given BEFORE arguments.";
+  exit 1;
+fi
+
+if [[ -n $1 ]]; then
+  db=$1;
 else 
-  echo "Usage: sqlcompare DB"
-  echo "  DB: name of the database that will be changed and compared"
-  exit
+  usage;
 fi
 
-DUMPOPTIONS="--ignore-table=${db}.sessions --ignore-table=${db}.search_index --ignore-table=${db}.search_dataset --ignore-table=${db}.cache_menu --skip-lock-tables"
+if [[ -z $DB_PASS ]]; then
+  echo "MySQL root password should be set in ${MYDIR}/config.sh, but it's not found."
+  read -p "Please enter MySQL root password..." -s DB_PASS
+fi
 
-mysqldump -u root -p$DB_PASS --complete-insert --no-create-info --skip-extended-insert $DUMPOPTIONS $db > /tmp/before.sql
+DUMPOPTIONS="--complete-insert --no-create-info --skip-extended-insert --skip-lock-tables --skip-dump-date";
+for IGNORE_TABLE in $IGNORE_TABLES; do
+  DUMPOPTIONS="$DUMPOPTIONS --ignore-table=${db}.$IGNORE_TABLE";
+done
+
+echo mysqldump -u root -p$DB_PASS $DUMPOPTIONS $db;
+
+mysqldump -u root -p$DB_PASS $DUMPOPTIONS $db > /tmp/before.sql
 
 echo "'Before' snapshot has been taken."
-echo Make your DB changes in the browser or elsewhere, then strike Enter here to continue with the 'after' snapshot.
+read -p "Make your DB changes in the browser or elsewhere, then strike Enter here to continue with the 'after' snapshot."
 
-read continue
+mysqldump -u root -p$DB_PASS $DUMPOPTIONS $db > /tmp/after.sql
 
-mysqldump -u root -p$DB_PASS --complete-insert --no-create-info --skip-extended-insert $DUMPOPTIONS $db > /tmp/after.sql
-
-diff /tmp/{before,after}.sql | grep -vP "(civicrm_cache|civicrm_log|civicrm_prevnext_cache|^[<>] -- Dump completed on |^[^<>])" > /tmp/sqlcompare-diff.txt
+if [[ "$USE_WORD_BASED_DIFF" == "1" ]]; then
+  mkdir /tmp/sqlcompare-git
+  rm -rf /tmp/sqlcompare-git;
+  cd /tmp/sqlcompare-git;
+  git init;
+  mv /tmp/before.sql ./export.sql
+  git add export.sql
+  git commit -a -m "initial commit";
+  mv /tmp/after.sql ./export.sql
+  git diff --word-diff=plain --word-diff-regex=. > /tmp/sqlcompare-diff.txt
+else 
+  diff /tmp/{before,after}.sql > /tmp/sqlcompare-diff.txt
+fi;
 
 less /tmp/sqlcompare-diff.txt
 
