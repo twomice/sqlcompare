@@ -119,7 +119,7 @@ ls -la /tmp/sqlcompare-git;
   git add export.sql
   git commit -a -m "initial commit";
   mv /tmp/after.sql ./export.sql
-  git diff --word-diff=plain --word-diff-regex=. --color > /tmp/sqlcompare-diff.txt
+  git diff --word-diff=plain --word-diff-regex=. --color --unified=0 | tail -n+5 > /tmp/sqlcompare-diff.txt
 else 
   diff /tmp/{before,after}.sql > /tmp/sqlcompare-diff.txt
 fi;
