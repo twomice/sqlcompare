@@ -95,7 +95,7 @@ fi
 IGNORE_TABLES="$IGNORE_TABLES $ADDL_IGNORE_TABLES"
 
 
-DUMPOPTIONS="--complete-insert --no-create-info --skip-extended-insert --skip-lock-tables --skip-dump-date";
+DUMPOPTIONS="--complete-insert --no-create-info --skip-extended-insert --skip-lock-tables --skip-dump-date --routines";
 for IGNORE_TABLE in $IGNORE_TABLES; do
   DUMPOPTIONS="$DUMPOPTIONS --ignore-table=${db}.$IGNORE_TABLE";
 done
@@ -119,11 +119,13 @@ ls -la /tmp/sqlcompare-git;
   git add export.sql
   git commit -a -m "initial commit";
   mv /tmp/after.sql ./export.sql
-  git diff --word-diff=plain --word-diff-regex=. --color --unified=0 | tail -n+5 > /tmp/sqlcompare-diff.txt
+  git diff --text --word-diff=plain --word-diff-regex="[^[:space:],]+" --color --unified=0 | tail -n+5 > /tmp/sqlcompare.diff
+  less -r /tmp/sqlcompare.diff
+  echo 'diff stored in /tmp/sqlcompare.diff (use `less -r` for color handling)'
 else 
-  diff /tmp/{before,after}.sql > /tmp/sqlcompare-diff.txt
+  diff /tmp/{before,after}.sql > /tmp/sqlcompare.diff
+  less /tmp/sqlcompare.diff
+  echo 'diff stored in /tmp/sqlcompare.diff'
 fi;
 
-less -r /tmp/sqlcompare-diff.txt
 
-echo 'diff stored in /tmp/sqlcompare-diff.txt (use `less -r` in case it contains colors)'
